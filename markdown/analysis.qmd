@@ -1,0 +1,359 @@
+---
+title: "Word duration analysis"
+author:
+    - name: Joshua Wilson Black
+      orcid: 0000-0002-8272-5763
+      email: joshua.black@canterbury.ac.nz
+      affiliations:
+      - name: New Zealand Institute for Language, Brain and Behaviour, University of Canterbury
+        city: Christchurch
+        country: New Zealand
+date: today
+lightbox:
+  match: auto
+format: 
+  html:
+    theme: flatly
+    toc: true
+    toc-depth: 6
+    toc-expand: true
+    toc-location: right
+    code-summary: "To view code click here"
+    anchor-sections: true
+    number-sections: true
+    cap-location: margin
+    title-block-banner: true
+    fig-responsive: true
+    lang: 'en-GB'
+    execute:
+      warning: false
+    embed-resources: false
+bibliography: 
+  - ../stat_workshops.bib
+  - ../grateful-refs.bib
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+# Overview { - }
+
+[Exercise: describe what is in this document.]
+
+Link to the preregistration goes here: [not yet in existence].
+
+::: callout-note
+
+Many of the code blocks below have the option `#| eval: false`. This is because
+they either make a request to download data (which you only want to do once)
+or they are incomplete and need to be completed as exercises. 
+
+`#| eval: false` means the block will not run when you use 'run all' and they
+will not run when you knit the document. The blocks will run if you individual
+press the green play button or use the keyboard shortcut. 
+
+It is easy enough to change the option.
+Just put `true` instead of `false`.
+:::
+
+# Libraries, configuration, and data
+
+We load a series of libraries for the analysis. I often use comments to explain
+why we are loading a package or group of packages (esp. if they are a bit 
+obscure).
+
+```{r}
+library(tidyverse)
+
+# file path management
+library(here)
+
+# to fit linear mixed effects models
+library(lme4)
+
+# extract data from labb-cat
+library(nzilbb.labbcat)
+
+# Change the ggplot theme for all plots
+theme_set(theme_bw())
+```
+
+## Data extraction from LaBB-CAT demo.
+
+When you run this code it will ask you for the demo instance user name and
+password. I will tell you these in the workshop session.
+
+```{r}
+#| eval: false
+labbcat.url <- "https://labbcat.canterbury.ac.nz/demo"
+
+# Work out which transcripts are from the QuakeBox
+ids <- getTranscriptIdsInCorpus(labbcat.url, "QB")
+
+# Get all words from QB corpora.
+qb_words <- getMatches(
+  labbcat.url,
+  pattern = ".+",
+  anchor.confidence.min = 50,
+  transcript.expression = expressionFromIds(ids)
+)
+
+# Here are the names of the layers we want for each word.
+# to see what is available run `getLayerIds(labbcat.url)`
+desired_labels <- c(
+  "word frequency", "syllables per minute", "participant_gender",
+  "participant_age_category", "keyness", "orthography",
+  "pos", "syllable count"
+)
+
+# Get the information
+annotations <- getMatchLabels(
+  labbcat.url,
+  match.ids = qb_words$MatchId,
+  layer.ids = desired_labels
+)
+
+# Get the previous word
+prev_environ <- getMatchLabels(
+  labbcat.url,
+  match.ids = qb_words$MatchId,
+  layer.ids = c(
+    "orthography"
+  ),
+  target.offset = -1
+)
+
+# combine the original matches with the additional 
+# information extracted from labbcat.
+qb_words <- bind_cols(
+  qb_words, annotations, prev_environ
+)
+
+# You may want to save the data at this point to avoid constant querying of 
+# the LaBB-CAT server
+write_rds(qb_words, here('data', 'labbcat_data.rds'))
+```
+
+Load previously downloaded data.
+```{r}
+qb_words <- read_rds(here('data', 'labbcat_data.rds'))
+```
+
+
+# Tidy, create new variables, and filter
+
+We need to tidy up the dataset, create some new variables, and then apply the
+filters mentioned in our preregistration.
+
+```{r}
+#| eval: false
+
+# rename variables
+qb_words <- qb_words |>
+  rename(
+    transcript = Transcript,
+    participant = Participant,
+    corpus = Corpus,
+    line = Line,
+    line_end = LineEnd,
+    match_id = MatchId,
+    gender = participant_gender,
+    age = participant_age_category,
+    speech_rate = syllables.per.minute,
+    frequency = word.frequency,
+    start = Target.word.start,
+    end = Target.word.end,
+    prev_word = Token.minus.1.orthography,
+    syllable_count = syllable.count
+  )
+
+# arrange by participant, line, target onset (necessary to determine if word
+# is at end of utterance.)
+qb_words <- qb_words |>
+  arrange(participant, line, start)
+
+# We need counts of how often a word appears. For the informativity
+# calculation, it is convenient to do it twice, once for the 'previous word',
+# once for the actual word.
+prev_counts <- qb_words |>
+  count(orthography) |>
+  rename(
+    prev_word = orthography,
+    prev_count = n
+  )
+
+corpus_counts <- qb_words |>
+  count(orthography) |>
+  rename(
+    word_count = n
+  )
+
+# Informativity requires us to calculate how ofter two words appear 
+# together.
+context_counts <- qb_words |>
+  count(orthography, prev_word) |>
+  rename(context_count = n)
+
+# count word within utterance
+qb_words <- qb_words |>
+  group_by(participant, line) |>
+  mutate(
+    a_word = 1,
+    word_no = cumsum(a_word),
+    final = word_no == max(word_no)
+  ) |>
+  select(-a_word) |>
+  ungroup()
+
+qb_words <- qb_words |>
+  left_join(corpus_counts) |>
+  left_join(context_counts) |>
+  left_join(prev_counts)
+
+# create new variables.
+qb_words <- qb_words |>
+  mutate(
+    word_duration = ##### EXERCISE --- complete this line,
+    prev_pred = context_count / prev_count,
+    back_pred = context_count / word_count
+  )
+
+# informativity calculation
+informativity <- qb_words |>
+  group_by(orthography, prev_word) |>
+  summarise(
+    prev_pred = first(prev_pred, na_rm = TRUE),
+    back_pred = first(back_pred, na_rm = TRUE)
+  ) |>
+  group_by(orthography) |>
+  summarise(
+    prev_info = - sum(back_pred * log(prev_pred), na.rm = TRUE)
+  )
+
+```
+
+Now let's implement the filtering steps from the preregistration.
+
+These were:
+
+1. We will remove unfinished words (marked with '~' in the corpus).
+2. We will remove function words (i.e. we include nouns, adjectives, adverbs and verbs)
+3. We remove tokens ending in "'s".
+4. We will exclude tokens of words whose duration are more than 2.5SD from the mean duration given their number of syllables.
+5. We will remove utterances whose speech rate is more than 2.5SD from the speaker's mean speech rate.
+
+```{r}
+#| eval: false
+# TODO: implement the word filtering steps (1, 2, 3).
+# hint, look at the documentation for str_detect.
+
+qb_words <- qb_words |> 
+  filter(
+    -str_detect(), # complete these lines
+    -str_detect(), # Make sure you understand what the '-' is doing.
+    -str_detect() # try to make this work using the 'negate' argument to 
+    # 'str_detect()' rather than the minus sign.
+  )
+```
+
+We now apply the 2.5 SD filtering steps. These require us to do some grouping
+of the data.
+
+```{r}
+#| eval: false
+
+# Here's the 2.5SD filter for word duration
+qb_words <- qb_words |> 
+  group_by(syllable.count) |> 
+  mutate(
+    mean_syll_dur = mean(word_duration),
+    sd_syll_dur = sd(word_duration)
+  ) |> 
+  filter(
+    between(
+      word_duration, 
+      mean_syll_dur - 2.5*sd_syll_dur, 
+      mean_syll_dur + 2.5*sd_syll_dur
+    )
+  ) |> 
+  ungroup()
+
+# TODO: apply the same kind of logic to filter speech rate.
+qb_words <- qb_words |> 
+  group_by() |> ### COMPLETE THIS LINE 
+  mutate(
+    mean_speech_rate = mean(), # COMPLETE THIS LINE
+    ### What goes here?
+  ) |> 
+  filter(
+    between(
+      word_duration, 
+      mean_syll_dur - 2.5*sd_syll_dur, ## Correct the names in this line and the next. 
+      mean_syll_dur + 2.5*sd_syll_dur
+    )
+  ) |> 
+  ungroup()
+
+# TODO: you've created some new variables which you probably don't need anymore.
+# Write some code using `select()` to remove the variables you don't need
+# anymore.
+```
+
+## Description and visualisation
+
+At this point, we should make sure that everything is as we expect it to be 
+with the data.
+
+```{r}
+#| eval: false
+
+# Produce a text summary of the data here using an R function
+```
+
+```{r}
+#| eval: false
+
+# visualise the key variables.
+```
+
+
+
+# Analysis
+
+Our preregistered analysis is:
+> We will fit a linear mixed effects model with word duration as the response.
+The explanatory variables are corpus word frequency, word informativity
+(generated from the corpus via equation from Seyfarth), and whether a word is at
+the end of an utterance. We also fit a series of control variables: speech rate
+(syllables per second, at utterance level), part of speech, whether the word has
+appeared in the previous 30 seconds, and how many syllables are in the word
+(via. CELEX).
+>
+> Our initial model will include random intercepts for word and participant, and
+random slopes for each of the explanatory variables.
+> 
+We will implement the models using the lme4 package in R. If the initial model
+fails to converge, we will first increase the iterations. If that fails, we will
+simplify the random effects structure in this order: remove random effects
+correlations, remove word frequency slope, remove informativity slope, remove
+utterance finality slope.
+
+
+EXERCISE: implement this using `lmer()` from `lme4`.
+
+## The maximal model
+
+
+
+
+```{r}
+#| echo: false
+grateful::nocite_references(
+  grateful::cite_packages(output = "citekeys", out.dir = here())
+)
+```
+
+
+::: refs
+
+:::
