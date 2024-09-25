@@ -250,7 +250,7 @@ These were:
 
 qb_words <- qb_words |> 
   filter(
-    -str_detect(target.word, '~'), # complete these lines
+    -str_detect(orthography, '~'), # complete these lines
     str_detect(pos, "NN|JJ|RB|VB"), # Make sure you understand what the '-' is doing.
     -str_detect() # try to make this work using the 'negate' argument to 
     # 'str_detect()' rather than the minus sign.
