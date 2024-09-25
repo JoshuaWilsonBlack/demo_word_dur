@@ -40,7 +40,7 @@ editor:
 
 [Exercise: describe what is in this document.]
 
-Link to the preregistration goes here: [not yet in existence].
+Link to the preregistration goes here: [not yet public].
 
 ::: callout-note
 
@@ -213,7 +213,7 @@ qb_words <- qb_words |>
 # create new variables.
 qb_words <- qb_words |>
   mutate(
-    word_duration = ##### EXERCISE --- complete this line,
+    word_duration = end - start,
     prev_pred = context_count / prev_count,
     back_pred = context_count / word_count
   )
@@ -230,6 +230,8 @@ informativity <- qb_words |>
     prev_info = - sum(back_pred * log(prev_pred), na.rm = TRUE)
   )
 
+qb_words <- qb_words |> 
+  left_join(informativity)
 ```
 
 Now let's implement the filtering steps from the preregistration.
@@ -240,7 +242,6 @@ These were:
 2. We will remove function words (i.e. we include nouns, adjectives, adverbs and verbs)
 3. We remove tokens ending in "'s".
 4. We will exclude tokens of words whose duration are more than 2.5SD from the mean duration given their number of syllables.
-5. We will remove utterances whose speech rate is more than 2.5SD from the speaker's mean speech rate.
 
 ```{r}
 #| eval: false
@@ -250,7 +251,7 @@ These were:
 qb_words <- qb_words |> 
   filter(
     -str_detect(), # complete these lines
-    -str_detect(), # Make sure you understand what the '-' is doing.
+    str_detect(pos, "NN|JJ|RB|VB"), # Make sure you understand what the '-' is doing.
     -str_detect() # try to make this work using the 'negate' argument to 
     # 'str_detect()' rather than the minus sign.
   )
