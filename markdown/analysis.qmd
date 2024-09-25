@@ -146,8 +146,6 @@ We need to tidy up the dataset, create some new variables, and then apply the
 filters mentioned in our preregistration.
 
 ```{r}
-#| eval: false
-
 # rename variables
 qb_words <- qb_words |>
   rename(
@@ -244,15 +242,14 @@ These were:
 4. We will exclude tokens of words whose duration are more than 2.5SD from the mean duration given their number of syllables.
 
 ```{r}
-#| eval: false
 # TODO: implement the word filtering steps (1, 2, 3).
 # hint, look at the documentation for str_detect.
 
 qb_words <- qb_words |> 
   filter(
-    -str_detect(orthography, '~'), # complete these lines
+    !str_detect(orthography, '~'), # complete these lines
     str_detect(pos, "NN|JJ|RB|VB"), # Make sure you understand what the '-' is doing.
-    -str_detect(orthography, 's$') # try to make this work using the 'negate' argument to 
+    !str_detect(orthography, 's$') # try to make this work using the 'negate' argument to 
     # 'str_detect()' rather than the minus sign.
   )
 ```
@@ -262,7 +259,6 @@ of the data.
 
 ```{r}
 #| eval: false
-
 # Here's the 2.5SD filter for word duration
 qb_words <- qb_words |> 
   group_by(syllable.count) |> 
