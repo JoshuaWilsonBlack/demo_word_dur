@@ -281,9 +281,9 @@ qb_words <- qb_words |>
 
 # TODO: apply the same kind of logic to filter speech rate.
 qb_words <- qb_words |> 
-  group_by() |> ### COMPLETE THIS LINE 
+  group_by(Participant) |> ### COMPLETE THIS LINE 
   mutate(
-    mean_speech_rate = mean(), # COMPLETE THIS LINE
+    mean_speech_rate = mean(syllables.per.minute), # COMPLETE THIS LINE
     ### What goes here?
   ) |> 
   filter(
